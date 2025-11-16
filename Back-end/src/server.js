@@ -1,20 +1,24 @@
 import express from 'express';
 import dotenv from "dotenv";
 import { connectDB } from "./libs/db.js";
+import authRoute from './routes/authRoute.js';
+import cookieParser from 'cookie-parser';
 
-dotenv.config();
+dotenv.config({ path: './src/.env' });
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
 //middlewares
 app.use(express.json());
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+app.use(cookieParser());
 
-connectDB().then(()=> {
-    app.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
-      });
+//public routes
+app.use('/api/auth', authRoute);
+
+//private routes
+connectDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
 });
