@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Moon, Calendar, ArrowCounterClockwise, Check, Target } from 'phosphor-react';
+import { Activity, Moon, Calendar, ArrowCounterClockwise, Check, Target, CalendarBlank } from 'phosphor-react';
 import { moodAPI } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -227,12 +227,14 @@ const EmotionWheelUI = ({ onSelect, selectedZone, selectedCluster }) => {
   );
 };
 
-const SmartCheckIn = ({ onSave, getCardStyle }) => {
+const SmartCheckIn = ({ onSave, getCardStyle, isGlass }) => {
   const [zone, setZone] = useState(null);
   const [cluster, setCluster] = useState(null);
   const [specificEmotion, setSpecificEmotion] = useState(null);
   const [note, setNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const toast = useToast();
 
   const handleWheelSelect = (type, id) => {
@@ -254,6 +256,7 @@ const SmartCheckIn = ({ onSave, getCardStyle }) => {
     setCluster(null);
     setSpecificEmotion(null);
     setNote('');
+    setSelectedDate(new Date().toISOString().split('T')[0]);
   };
 
   const handleSave = async () => {
@@ -283,18 +286,27 @@ const SmartCheckIn = ({ onSave, getCardStyle }) => {
         tags.push(specificEmotion);
       }
 
+      // Use selected date instead of today
+      const dateToUse = new Date(selectedDate);
+      dateToUse.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+      
       await moodAPI.create({
         score,
         note: note || undefined,
         tags,
-        date: new Date().toISOString(),
+        date: dateToUse.toISOString(),
       });
 
       const emotionLabel = Object.values(MOOD_DATA)
         .flatMap((z) => z.clusters)
         .find((c) => c.id === cluster)?.label || MOOD_DATA[zone].label;
 
-      toast.success(`Your ${emotionLabel.toLowerCase()} mood has been saved`, {
+      const isToday = selectedDate === new Date().toISOString().split('T')[0];
+      const dateLabel = isToday 
+        ? 'today' 
+        : new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      toast.success(`Your ${emotionLabel.toLowerCase()} mood has been saved for ${dateLabel}`, {
         title: 'Mood Saved',
         duration: 4000,
       });
@@ -316,12 +328,96 @@ const SmartCheckIn = ({ onSave, getCardStyle }) => {
   const currentClusterObj =
     zone && cluster ? MOOD_DATA[zone].clusters.find((c) => c.id === cluster) : null;
 
+  // Close date picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showDatePicker && !event.target.closest('[data-date-picker]')) {
+        setShowDatePicker(false);
+      }
+    };
+
+    if (showDatePicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDatePicker]);
+
   return (
     <div className="rounded-3xl mb-8 relative overflow-hidden min-h-[500px] flex flex-col fade-in-up" style={getCardStyle()}>
       <div className="px-8 pt-8 pb-4 flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-primary">Daily Check-in</h2>
-          <p className="text-secondary text-sm">Explore your emotions.</p>
+        <div className="flex-1">
+          <div className="flex items-center gap-4 mb-2">
+            <div>
+              <h2 className="text-2xl font-bold text-primary">Daily Check-in</h2>
+              <p className="text-secondary text-sm">Explore your emotions.</p>
+            </div>
+            {/* Date Picker */}
+            <div className="relative" data-date-picker>
+              <button
+                onClick={() => setShowDatePicker(!showDatePicker)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium transition-all text-sm ${
+                  selectedDate !== new Date().toISOString().split('T')[0]
+                    ? isGlass
+                      ? 'bg-accent-sage/20 border border-accent-sage/30 text-accent-sage'
+                      : 'bg-accent-sage-light text-accent-sage'
+                    : isGlass
+                      ? 'bg-transparent border border-primary/20 text-secondary hover:border-primary/40'
+                      : 'bg-tertiary text-secondary hover:bg-tertiary/80'
+                }`}
+                style={isGlass && selectedDate === new Date().toISOString().split('T')[0] ? { backgroundColor: 'transparent' } : {}}
+              >
+                <CalendarBlank size={16} />
+                <span>
+                  {selectedDate === new Date().toISOString().split('T')[0]
+                    ? 'Today'
+                    : new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: new Date(selectedDate).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })
+                  }
+                </span>
+              </button>
+              
+              {showDatePicker && (
+                <div 
+                  className="absolute top-full left-0 mt-2 rounded-xl shadow-2xl z-50 p-4"
+                  style={getCardStyle()}
+                  data-date-picker
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-semibold text-primary">Select Date</label>
+                      {selectedDate !== new Date().toISOString().split('T')[0] && (
+                        <button
+                          onClick={() => {
+                            setSelectedDate(new Date().toISOString().split('T')[0]);
+                            setShowDatePicker(false);
+                          }}
+                          className="flex items-center gap-1 text-xs text-accent-sage hover:text-accent-sage/80 transition-colors"
+                        >
+                          <ArrowCounterClockwise size={14} />
+                          Reset to Today
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => {
+                        setSelectedDate(e.target.value);
+                        setShowDatePicker(false);
+                      }}
+                      max={new Date().toISOString().split('T')[0]}
+                      className="w-full px-3 py-2 bg-tertiary border border-primary rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage text-primary"
+                    />
+                    <p className="text-xs text-secondary">
+                      Select a date to record mood for that day
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         {zone && (
           <button
@@ -742,7 +838,7 @@ const MonthlyReport = ({ currentMonth, refreshTrigger, getCardStyle }) => {
 };
 
 const MoodPage = () => {
-  const { getCardStyle } = useTheme();
+  const { getCardStyle, isGlass } = useTheme();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -758,7 +854,7 @@ const MoodPage = () => {
         <p className="text-secondary">Track your emotional well-being.</p>
       </header>
 
-      <SmartCheckIn onSave={handleMoodSave} getCardStyle={getCardStyle} />
+      <SmartCheckIn onSave={handleMoodSave} getCardStyle={getCardStyle} isGlass={isGlass} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-auto lg:h-[400px]">
         <div className="lg:col-span-2 h-full">
